@@ -75,7 +75,6 @@ impl Direction {
 struct Snake {
     direction: Direction,
     last_direction: Direction,
-    segments: Vec<Entity>,
 }
 
 struct SnakeHead;
@@ -140,17 +139,15 @@ fn spawn_snake(mut commands: Commands, materials: Res<Materials>) {
         .current_entity()
         .unwrap();
 
-    let _snake = commands
+    let snake = commands
         .spawn((Snake {
             direction: Direction::Right,
             last_direction: Direction::Right,
-            segments: vec![snake_head, snake_body, snake_tail],
         },))
         .current_entity()
         .unwrap();
 
-    //commands.push_children(snake, &[snake_head]);
-    /* Use this instead of the segment vec, there will be children component then */
+    commands.push_children(snake, &[snake_head, snake_body, snake_tail]);
 }
 
 const ARENA_WIDTH: u32 = 10;
@@ -196,10 +193,10 @@ fn snake_timer(time: Res<Time>, mut snake_timer: ResMut<SnakeTimer>) {
 fn snake_movement(
     keyboard_input: Res<Input<KeyCode>>,
     snake_timer: Res<SnakeTimer>,
-    mut snakes: Query<&mut Snake>,
+    mut snakes: Query<(&mut Snake, &Children)>,
     mut positions: Query<&mut Position>,
 ) {
-    for mut snake in snakes.iter_mut() {
+    for (mut snake, segments) in snakes.iter_mut() {
         let direction = {
             if keyboard_input.pressed(KeyCode::Left) {
                 Direction::Left
@@ -223,7 +220,7 @@ fn snake_movement(
         }
 
         /* Actual Movement */
-        for two_segements in snake.segments.windows(2).rev() {
+        for two_segements in segments.windows(2).rev() {
             let prev = two_segements[1];
             let next = two_segements[0];
 
@@ -233,7 +230,7 @@ fn snake_movement(
             prev_position.y = next_position.y;
         }
 
-        let mut head_position = positions.get_mut(snake.segments[0]).unwrap();
+        let mut head_position = positions.get_mut(segments[0]).unwrap();
         match snake.direction {
             Direction::Left => head_position.x -= 1,
             Direction::Right => head_position.x += 1,
@@ -294,12 +291,12 @@ struct GrowthEvent {
 fn eat_food(
     mut commands: Commands,
     mut growth_events: ResMut<Events<GrowthEvent>>,
-    snakes: Query<(Entity, &Snake)>,
+    snakes: Query<With<Snake, (Entity, &Children)>>,
     positions: Query<&Position>,
     food_positions: Query<With<Food, (Entity, &Position)>>,
 ) {
-    for (entity, snake) in snakes.iter() {
-        let head = snake.segments[0];
+    for (entity, segments) in snakes.iter() {
+        let head = segments[0];
         let head_position = positions.get(head).unwrap();
         for (food_entity, food_position) in food_positions.iter() {
             if food_position == head_position {
@@ -316,12 +313,12 @@ fn snake_growth(
     growth_events: Res<Events<GrowthEvent>>,
     mut growth_reader: Local<EventReader<GrowthEvent>>,
     positions: Query<&Position>,
-    mut snakes: Query<&mut Snake>,
+    segments: Query<&Children>,
 ) {
     for growth_event in growth_reader.iter(&growth_events) {
-        let mut snake = snakes.get_mut(growth_event.snake).unwrap();
+        let snake_segments = segments.get(growth_event.snake).unwrap();
 
-        let last_segment = snake.segments.last().unwrap();
+        let last_segment = snake_segments.last().unwrap();
         let last_segment_position = positions.get(*last_segment).unwrap();
 
         let snake_tail = commands
@@ -336,7 +333,7 @@ fn snake_growth(
             .current_entity()
             .unwrap();
 
-        snake.segments.push(snake_tail);
+        commands.push_children(growth_event.snake, &[snake_tail]);
     }
 }
 
@@ -364,12 +361,12 @@ struct GameOverEvent {
 fn snake_eat_snake(
     mut game_over_event: ResMut<Events<GameOverEvent>>,
     positions: Query<&Position>,
-    snakes: Query<(Entity, &Snake)>,
+    snakes: Query<With<Snake, (Entity, &Children)>>,
     head_positions: Query<With<SnakeHead, &Position>>,
 ) {
-    for (entity, snake) in snakes.iter() {
+    for (entity, segments) in snakes.iter() {
         for head_position in head_positions.iter() {
-            for segment in &snake.segments[1..] {
+            for segment in &segments[1..] {
                 if let Ok(segment_position) = positions.get(*segment) {
                     if head_position == segment_position {
                         game_over_event.send(GameOverEvent { snake: entity }); /* We send the entity that was "eaten" to be destroyed */
@@ -385,16 +382,10 @@ fn game_over(
     materials: Res<Materials>,
     game_over_events: Res<Events<GameOverEvent>>,
     mut game_over_reader: Local<EventReader<GameOverEvent>>,
-    snakes: Query<&Snake>,
     foods: Query<With<Food, Entity>>,
 ) {
     for game_over_event in game_over_reader.iter(&game_over_events) {
-        let snake = snakes.get(game_over_event.snake).unwrap();
-        for segment in snake.segments.iter().rev() {
-            commands.despawn(*segment);
-        }
-
-        commands.despawn(game_over_event.snake);
+        commands.despawn_recursive(game_over_event.snake);
 
         for food in foods.iter() {
             commands.despawn(food);
