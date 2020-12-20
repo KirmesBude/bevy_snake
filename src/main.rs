@@ -1,34 +1,45 @@
 use bevy::prelude::*;
-use bevy::render::pass::ClearColor;
-use std::time::Duration;
+use bevy::{core::FixedTimestep, render::pass::ClearColor};
 
+#[bevy_main]
 fn main() {
     App::build()
         /* Window initialization */
         .add_resource(WindowDescriptor {
             title: "Snake!".to_string(),
-            width: 1200,
-            height: 1200,
+            width: 1200.0,
+            height: 1200.0,
             ..Default::default()
         })
         /* Resources */
         .add_resource(ClearColor(Color::rgb(0.04, 0.04, 0.04)))
-        .add_resource(SnakeTimer::default())
-        .add_resource(FoodSpawnTimer::default())
         /* Events */
         .add_event::<GrowthEvent>()
         .add_event::<GameOverEvent>()
         /* Startup */
         .add_startup_system(setup.system())
-        .add_startup_stage("game_setup")
-        .add_startup_system_to_stage("game_setup", spawn_snake.system())
+        .add_startup_stage(
+            "game_setup",
+            SystemStage::parallel().with_system(spawn_snake.system()),
+        )
         /* Systems */
         .add_system(position_translation.system())
         .add_system(sprite_scaling.system())
-        .add_system(snake_timer.system())
-        .add_system(snake_movement.system())
-        .add_system(food_timer.system())
-        .add_system(spawn_food.system())
+        .add_system(snake_direction.system())
+        .add_stage_after(
+            stage::UPDATE,
+            "fixed_update_snake",
+            SystemStage::parallel()
+                .with_run_criteria(FixedTimestep::step(0.15))
+                .with_system(snake_movement.system()),
+        )
+        .add_stage_after(
+            stage::UPDATE,
+            "fixed_update_food",
+            SystemStage::parallel()
+                .with_run_criteria(FixedTimestep::step(1.0))
+                .with_system(spawn_food.system()),
+        )
         .add_system(eat_food.system())
         .add_system(snake_growth.system())
         .add_system(wrapping_edges.system())
@@ -45,8 +56,8 @@ struct Materials {
     body_material: Handle<ColorMaterial>,
 }
 
-fn setup(mut commands: Commands, mut materials: ResMut<Assets<ColorMaterial>>) {
-    commands.spawn(Camera2dComponents::default());
+fn setup(commands: &mut Commands, mut materials: ResMut<Assets<ColorMaterial>>) {
+    commands.spawn(Camera2dBundle::default());
     commands.insert_resource(Materials {
         head_material: materials.add(Color::rgb(0.7, 0.7, 0.7).into()),
         food_material: materials.add(Color::rgb(1.0, 0.0, 1.0).into()),
@@ -101,9 +112,9 @@ impl Size {
     }
 }
 
-fn spawn_snake(mut commands: Commands, materials: Res<Materials>) {
+fn spawn_snake(commands: &mut Commands, materials: Res<Materials>) {
     let snake_head = commands
-        .spawn(SpriteComponents {
+        .spawn(SpriteBundle {
             material: materials.head_material.clone(),
             sprite: Sprite::new(Vec2::new(10.0, 10.0)),
             ..Default::default()
@@ -116,7 +127,7 @@ fn spawn_snake(mut commands: Commands, materials: Res<Materials>) {
         .unwrap();
 
     let snake_body = commands
-        .spawn(SpriteComponents {
+        .spawn(SpriteBundle {
             material: materials.body_material.clone(),
             sprite: Sprite::new(Vec2::new(10.0, 10.0)),
             ..Default::default()
@@ -128,7 +139,7 @@ fn spawn_snake(mut commands: Commands, materials: Res<Materials>) {
         .unwrap();
 
     let snake_tail = commands
-        .spawn(SpriteComponents {
+        .spawn(SpriteBundle {
             material: materials.body_material.clone(),
             sprite: Sprite::new(Vec2::new(10.0, 10.0)),
             ..Default::default()
@@ -182,25 +193,8 @@ fn sprite_scaling(windows: Res<Windows>, mut query: Query<(&Size, &mut Sprite)>)
     }
 }
 
-struct SnakeTimer(Timer);
-
-impl Default for SnakeTimer {
-    fn default() -> Self {
-        Self(Timer::new(Duration::from_millis(150), true))
-    }
-}
-
-fn snake_timer(time: Res<Time>, mut snake_timer: ResMut<SnakeTimer>) {
-    snake_timer.0.tick(time.delta_seconds);
-}
-
-fn snake_movement(
-    keyboard_input: Res<Input<KeyCode>>,
-    snake_timer: Res<SnakeTimer>,
-    mut snakes: Query<(&mut Snake, &Children)>,
-    mut positions: Query<&mut Position>,
-) {
-    for (mut snake, segments) in snakes.iter_mut() {
+fn snake_direction(keyboard_input: Res<Input<KeyCode>>, mut snakes: Query<&mut Snake>) {
+    for mut snake in snakes.iter_mut() {
         let direction = {
             if keyboard_input.pressed(KeyCode::Left) {
                 Direction::Left
@@ -218,11 +212,11 @@ fn snake_movement(
         if direction != snake.last_direction.opposite() {
             snake.direction = direction;
         }
+    }
+}
 
-        if !snake_timer.0.finished {
-            continue;
-        }
-
+fn snake_movement(mut snakes: Query<(&mut Snake, &Children)>, mut positions: Query<&mut Position>) {
+    for (mut snake, segments) in snakes.iter_mut() {
         /* Actual Movement */
         for two_segements in segments.windows(2).rev() {
             let prev = two_segements[1];
@@ -246,46 +240,27 @@ fn snake_movement(
     }
 }
 
-struct FoodSpawnTimer(Timer);
-
-impl Default for FoodSpawnTimer {
-    fn default() -> Self {
-        Self(Timer::new(Duration::from_millis(1000), true))
-    }
-}
-
-fn food_timer(time: Res<Time>, mut food_timer: ResMut<FoodSpawnTimer>) {
-    food_timer.0.tick(time.delta_seconds);
-}
-
 struct Food;
 
-fn spawn_food(
-    mut commands: Commands,
-    materials: Res<Materials>,
-    food_timer: Res<FoodSpawnTimer>,
-    q: Query<&Position>,
-) {
-    if food_timer.0.finished {
-        let position = Position {
-            x: (rand::random::<f32>() * ARENA_WIDTH as f32) as i32,
-            y: (rand::random::<f32>() * ARENA_HEIGHT as f32) as i32,
-        };
+fn spawn_food(commands: &mut Commands, materials: Res<Materials>, q: Query<&Position>) {
+    let position = Position {
+        x: (rand::random::<f32>() * ARENA_WIDTH as f32) as i32,
+        y: (rand::random::<f32>() * ARENA_HEIGHT as f32) as i32,
+    };
 
-        //check position
-        if q.iter().any(|p| p == &position) {
-            return;
-        }
-
-        commands
-            .spawn(SpriteComponents {
-                material: materials.food_material.clone(),
-                ..Default::default()
-            })
-            .with(Food)
-            .with(position)
-            .with(Size::square(0.8));
+    //check position
+    if q.iter().any(|p| p == &position) {
+        return;
     }
+
+    commands
+        .spawn(SpriteBundle {
+            material: materials.food_material.clone(),
+            ..Default::default()
+        })
+        .with(Food)
+        .with(position)
+        .with(Size::square(0.8));
 }
 
 struct GrowthEvent {
@@ -293,11 +268,11 @@ struct GrowthEvent {
 }
 
 fn eat_food(
-    mut commands: Commands,
+    commands: &mut Commands,
     mut growth_events: ResMut<Events<GrowthEvent>>,
-    snakes: Query<With<Snake, (Entity, &Children)>>,
+    snakes: Query<(Entity, &Children), With<Snake>>,
     positions: Query<&Position>,
-    food_positions: Query<With<Food, (Entity, &Position)>>,
+    food_positions: Query<(Entity, &Position), With<Food>>,
 ) {
     for (entity, segments) in snakes.iter() {
         let head = segments[0];
@@ -312,7 +287,7 @@ fn eat_food(
 }
 
 fn snake_growth(
-    mut commands: Commands,
+    commands: &mut Commands,
     materials: Res<Materials>,
     growth_events: Res<Events<GrowthEvent>>,
     mut growth_reader: Local<EventReader<GrowthEvent>>,
@@ -326,7 +301,7 @@ fn snake_growth(
         let last_segment_position = positions.get(*last_segment).unwrap();
 
         let snake_tail = commands
-            .spawn(SpriteComponents {
+            .spawn(SpriteBundle {
                 material: materials.body_material.clone(),
                 sprite: Sprite::new(Vec2::new(10.0, 10.0)),
                 ..Default::default()
@@ -365,8 +340,8 @@ struct GameOverEvent {
 fn snake_eat_snake(
     mut game_over_event: ResMut<Events<GameOverEvent>>,
     positions: Query<&Position>,
-    snakes: Query<With<Snake, (Entity, &Children)>>,
-    head_positions: Query<With<SnakeHead, &Position>>,
+    snakes: Query<(Entity, &Children), With<Snake>>,
+    head_positions: Query<&Position, With<SnakeHead>>,
 ) {
     for (entity, segments) in snakes.iter() {
         for head_position in head_positions.iter() {
@@ -382,11 +357,11 @@ fn snake_eat_snake(
 }
 
 fn game_over(
-    mut commands: Commands,
+    commands: &mut Commands,
     materials: Res<Materials>,
     game_over_events: Res<Events<GameOverEvent>>,
     mut game_over_reader: Local<EventReader<GameOverEvent>>,
-    foods: Query<With<Food, Entity>>,
+    foods: Query<Entity, With<Food>>,
 ) {
     for game_over_event in game_over_reader.iter(&game_over_events) {
         commands.despawn_recursive(game_over_event.snake);
