@@ -140,10 +140,14 @@ fn spawn_snake(mut commands: Commands, materials: Res<Materials>) {
         .unwrap();
 
     let snake = commands
-        .spawn((Snake {
-            direction: Direction::Right,
-            last_direction: Direction::Right,
-        },))
+        .spawn((
+            Snake {
+                direction: Direction::Right,
+                last_direction: Direction::Right,
+            },
+            Transform::default(),
+            GlobalTransform::default(),
+        ))
         .current_entity()
         .unwrap();
 
