@@ -1,5 +1,14 @@
 use bevy::prelude::*;
-use bevy::{core::FixedTimestep, render::pass::ClearColor};
+use bevy::{core::FixedTimestep, ecs::RunOnce, render::pass::ClearColor};
+
+#[derive(Clone)]
+enum AppState {
+    Menu,
+    InGame,
+    Pause,
+}
+
+const SNAKE_STATE: &str = "snake_test";
 
 #[bevy_main]
 fn main() {
@@ -13,38 +22,68 @@ fn main() {
         })
         /* Resources */
         .add_resource(ClearColor(Color::rgb(0.04, 0.04, 0.04)))
+        .add_resource(State::new(AppState::Menu))
         /* Events */
         .add_event::<GrowthEvent>()
         .add_event::<GameOverEvent>()
         /* Startup */
-        .add_startup_system(setup.system())
-        .add_startup_stage(
-            "game_setup",
-            SystemStage::parallel().with_system(spawn_snake.system()),
-        )
+        .add_startup_system(app_setup.system())
         /* Systems */
-        .add_system(position_translation.system())
-        .add_system(sprite_scaling.system())
-        .add_system(snake_direction.system())
         .add_stage_after(
             stage::UPDATE,
-            "fixed_update_snake",
-            SystemStage::parallel()
-                .with_run_criteria(FixedTimestep::step(0.15))
-                .with_system(snake_movement.system()),
+            SNAKE_STATE,
+            StateStage::<AppState>::default()
+                .with_enter_stage(AppState::Menu, SystemStage::parallel().with_system(menu_enter.system()))
+                .with_update_stage(AppState::Menu, SystemStage::parallel().with_system(menu_update.system()))
+                .with_exit_stage(AppState::Menu, SystemStage::parallel().with_system(menu_exit.system()))
+                .with_enter_stage(
+                    AppState::InGame,
+                    SystemStage::serial()
+                        .with_run_criteria(RunOnce::default())
+                        .with_system(spawn_snake.system()),
+                )
+                .with_update_stage(
+                    AppState::InGame,
+                    Schedule::default()
+                        .with_stage(
+                            "game_loop",
+                            SystemStage::parallel()
+                                .with_system(position_translation.system())
+                                .with_system(sprite_scaling.system())
+                                .with_system(snake_direction.system())
+                                .with_system(eat_food.system())
+                                .with_system(snake_growth.system())
+                                .with_system(wrapping_edges.system())
+                                .with_system(snake_eat_snake.system())
+                                .with_system(game_over.system())
+                                .with_system(toggle_pause.system()),
+                        )
+                        .with_stage(
+                            "fixed_update_snake",
+                            SystemStage::parallel()
+                                .with_run_criteria(FixedTimestep::step(0.15))
+                                .with_system(snake_movement.system()),
+                        )
+                        .with_stage(
+                            "fixed_update_food",
+                            SystemStage::parallel()
+                                .with_run_criteria(FixedTimestep::step(1.0))
+                                .with_system(spawn_food.system()),
+                        ),
+                )
+                .with_enter_stage(
+                    AppState::Pause,
+                    SystemStage::parallel().with_system(enter_pause.system()),
+                )
+                .with_update_stage(
+                    AppState::Pause,
+                    SystemStage::parallel().with_system(toggle_pause.system()),
+                )
+                .with_exit_stage(
+                    AppState::Pause,
+                    SystemStage::parallel().with_system(exit_pause.system()),
+                ),
         )
-        .add_stage_after(
-            stage::UPDATE,
-            "fixed_update_food",
-            SystemStage::parallel()
-                .with_run_criteria(FixedTimestep::step(1.0))
-                .with_system(spawn_food.system()),
-        )
-        .add_system(eat_food.system())
-        .add_system(snake_growth.system())
-        .add_system(wrapping_edges.system())
-        .add_system(snake_eat_snake.system())
-        .add_system(game_over.system())
         /* Plugins */
         .add_plugins(DefaultPlugins)
         .run();
@@ -56,7 +95,8 @@ struct Materials {
     body_material: Handle<ColorMaterial>,
 }
 
-fn setup(commands: &mut Commands, mut materials: ResMut<Assets<ColorMaterial>>) {
+fn app_setup(commands: &mut Commands, mut materials: ResMut<Assets<ColorMaterial>>) {
+    commands.spawn(CameraUiBundle::default());
     commands.spawn(Camera2dBundle::default());
     commands.insert_resource(Materials {
         head_material: materials.add(Color::rgb(0.7, 0.7, 0.7).into()),
@@ -373,4 +413,61 @@ fn game_over(
         spawn_snake(commands, materials);
         return;
     }
+}
+
+fn toggle_pause(mut state: ResMut<State<AppState>>, keyboard_input: Res<Input<KeyCode>>) {
+    if keyboard_input.just_pressed(KeyCode::Escape) {
+        match state.current() {
+            AppState::InGame => state.set_next(AppState::Pause).unwrap(),
+            AppState::Pause => state.set_next(AppState::InGame).unwrap(),
+            _ => (),
+        }
+    }
+}
+
+struct PauseText;
+
+fn enter_pause(commands: &mut Commands, asset_server: Res<AssetServer>) {
+    /* TODO: preload the text and only do visible/invisible here */
+    commands
+        .spawn(TextBundle {
+            style: Style {
+                align_self: AlignSelf::Center, /* Center center ??? */
+                ..Default::default()
+            },
+            text: Text {
+                value: "Paused".to_string(),
+                font: asset_server.load("fonts/FiraSans-Bold.ttf"),
+                style: TextStyle {
+                    font_size: 200.0, /* TODO: does not give a shit about window scale */
+                    color: Color::WHITE,
+                    alignment: TextAlignment {
+                        vertical: VerticalAlign::Center,
+                        horizontal: HorizontalAlign::Center,
+                    },
+                },
+            },
+            ..Default::default()
+        })
+        .with(PauseText);
+}
+
+fn exit_pause(commands: &mut Commands, pause_texts: Query<Entity, With<PauseText>>) {
+    for entity in pause_texts.iter() {
+        commands.despawn(entity);
+    }
+}
+
+fn menu_enter() {
+
+}
+
+fn menu_update(mut state: ResMut<State<AppState>>, keyboard_input: Res<Input<KeyCode>>) {
+    if keyboard_input.just_pressed(KeyCode::Return) {
+        state.set_next(AppState::InGame).unwrap();
+    }
+}
+
+fn menu_exit() {
+
 }
