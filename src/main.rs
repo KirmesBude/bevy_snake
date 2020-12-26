@@ -1,14 +1,22 @@
 use bevy::prelude::*;
-use bevy::{core::FixedTimestep, ecs::RunOnce, render::pass::ClearColor};
+use bevy::{core::FixedTimestep, render::pass::ClearColor};
 
-#[derive(Clone)]
+const SNAKE_APP_STATE_STARTUP: &'static str = "snake_app_state_startup";
+const SNAKE_APP_STATE: &'static str = "snake_app_state";
+#[derive(Clone, PartialEq, Eq)]
 enum AppState {
+    Setup,
     Menu,
-    InGame,
-    Pause,
+    Game,
 }
 
-const SNAKE_STATE: &str = "snake_test";
+const SNAKE_GAME_STATE: &'static str = "snake_game_state";
+#[derive(Clone, PartialEq, Eq)]
+enum GameState {
+    None,
+    Running,
+    Pausing,
+}
 
 #[bevy_main]
 fn main() {
@@ -22,28 +30,48 @@ fn main() {
         })
         /* Resources */
         .add_resource(ClearColor(Color::rgb(0.04, 0.04, 0.04)))
-        .add_resource(State::new(AppState::Menu))
+        .add_resource(State::new(AppState::Setup))
+        .add_resource(State::new(GameState::None))
         /* Events */
         .add_event::<GrowthEvent>()
         .add_event::<GameOverEvent>()
         /* Startup */
-        .add_startup_system(app_setup.system())
+        .add_stage_after(
+            stage::STARTUP,
+            SNAKE_APP_STATE_STARTUP,
+            StateStage::<AppState>::default()
+                .with_enter_stage(AppState::Setup, SystemStage::single(app_setup.system())),
+        )
         /* Systems */
         .add_stage_after(
             stage::UPDATE,
-            SNAKE_STATE,
+            SNAKE_APP_STATE,
             StateStage::<AppState>::default()
-                .with_enter_stage(AppState::Menu, SystemStage::parallel().with_system(menu_enter.system()))
-                .with_update_stage(AppState::Menu, SystemStage::parallel().with_system(menu_update.system()))
-                .with_exit_stage(AppState::Menu, SystemStage::parallel().with_system(menu_exit.system()))
+                .with_enter_stage(AppState::Menu, SystemStage::single(menu_enter.system()))
+                .with_update_stage(AppState::Menu, SystemStage::single(menu_update.system()))
+                .with_exit_stage(AppState::Menu, SystemStage::single(menu_exit.system()))
                 .with_enter_stage(
-                    AppState::InGame,
+                    AppState::Game,
                     SystemStage::serial()
-                        .with_run_criteria(RunOnce::default())
+                        .with_system(game_enter.system())
                         .with_system(spawn_snake.system()),
+                ),
+        )
+        .add_stage_after(
+            SNAKE_APP_STATE,
+            SNAKE_GAME_STATE,
+            StateStage::<GameState>::default()
+                .with_enter_stage(
+                    GameState::Pausing,
+                    SystemStage::single(enter_pause.system()),
                 )
                 .with_update_stage(
-                    AppState::InGame,
+                    GameState::Pausing,
+                    SystemStage::single(toggle_pause.system()),
+                )
+                .with_exit_stage(GameState::Pausing, SystemStage::single(exit_pause.system()))
+                .with_update_stage(
+                    GameState::Running,
                     Schedule::default()
                         .with_stage(
                             "game_loop",
@@ -70,18 +98,6 @@ fn main() {
                                 .with_run_criteria(FixedTimestep::step(1.0))
                                 .with_system(spawn_food.system()),
                         ),
-                )
-                .with_enter_stage(
-                    AppState::Pause,
-                    SystemStage::parallel().with_system(enter_pause.system()),
-                )
-                .with_update_stage(
-                    AppState::Pause,
-                    SystemStage::parallel().with_system(toggle_pause.system()),
-                )
-                .with_exit_stage(
-                    AppState::Pause,
-                    SystemStage::parallel().with_system(exit_pause.system()),
                 ),
         )
         /* Plugins */
@@ -95,7 +111,12 @@ struct Materials {
     body_material: Handle<ColorMaterial>,
 }
 
-fn app_setup(commands: &mut Commands, mut materials: ResMut<Assets<ColorMaterial>>) {
+fn app_setup(
+    commands: &mut Commands,
+    mut materials: ResMut<Assets<ColorMaterial>>,
+    asset_server: Res<AssetServer>,
+    mut app_state: ResMut<State<AppState>>,
+) {
     commands.spawn(CameraUiBundle::default());
     commands.spawn(Camera2dBundle::default());
     commands.insert_resource(Materials {
@@ -103,6 +124,34 @@ fn app_setup(commands: &mut Commands, mut materials: ResMut<Assets<ColorMaterial
         food_material: materials.add(Color::rgb(1.0, 0.0, 1.0).into()),
         body_material: materials.add(Color::rgb(0.6, 0.6, 0.6).into()),
     });
+
+    commands
+        .spawn(TextBundle {
+            visible: Visible {
+                is_visible: false,
+                ..Default::default()
+            },
+            style: Style {
+                align_self: AlignSelf::Center, /* Center center ??? */
+                ..Default::default()
+            },
+            text: Text {
+                value: "Paused".to_string(),
+                font: asset_server.load("fonts/FiraSans-Bold.ttf"),
+                style: TextStyle {
+                    font_size: 200.0, /* TODO: does not give a shit about window scale */
+                    color: Color::WHITE,
+                    alignment: TextAlignment {
+                        vertical: VerticalAlign::Center,
+                        horizontal: HorizontalAlign::Center,
+                    },
+                },
+            },
+            ..Default::default()
+        })
+        .with(PauseText);
+
+    app_state.set_next(AppState::Menu).unwrap();
 }
 
 #[derive(Debug, PartialEq, Copy, Clone)]
@@ -415,11 +464,15 @@ fn game_over(
     }
 }
 
-fn toggle_pause(mut state: ResMut<State<AppState>>, keyboard_input: Res<Input<KeyCode>>) {
-    if keyboard_input.just_pressed(KeyCode::Escape) {
-        match state.current() {
-            AppState::InGame => state.set_next(AppState::Pause).unwrap(),
-            AppState::Pause => state.set_next(AppState::InGame).unwrap(),
+fn toggle_pause(
+    app_state: Res<State<AppState>>,
+    mut game_state: ResMut<State<GameState>>,
+    keyboard_input: Res<Input<KeyCode>>,
+) {
+    if keyboard_input.just_pressed(KeyCode::Escape) && *app_state.current() == AppState::Game {
+        match game_state.current() {
+            GameState::Running => game_state.set_next(GameState::Pausing).unwrap(),
+            GameState::Pausing => game_state.set_next(GameState::Running).unwrap(),
             _ => (),
         }
     }
@@ -427,47 +480,32 @@ fn toggle_pause(mut state: ResMut<State<AppState>>, keyboard_input: Res<Input<Ke
 
 struct PauseText;
 
-fn enter_pause(commands: &mut Commands, asset_server: Res<AssetServer>) {
-    /* TODO: preload the text and only do visible/invisible here */
-    commands
-        .spawn(TextBundle {
-            style: Style {
-                align_self: AlignSelf::Center, /* Center center ??? */
-                ..Default::default()
-            },
-            text: Text {
-                value: "Paused".to_string(),
-                font: asset_server.load("fonts/FiraSans-Bold.ttf"),
-                style: TextStyle {
-                    font_size: 200.0, /* TODO: does not give a shit about window scale */
-                    color: Color::WHITE,
-                    alignment: TextAlignment {
-                        vertical: VerticalAlign::Center,
-                        horizontal: HorizontalAlign::Center,
-                    },
-                },
-            },
-            ..Default::default()
-        })
-        .with(PauseText);
-}
-
-fn exit_pause(commands: &mut Commands, pause_texts: Query<Entity, With<PauseText>>) {
-    for entity in pause_texts.iter() {
-        commands.despawn(entity);
+fn enter_pause(mut pause_text: Query<&mut Visible, With<PauseText>>) {
+    for mut visible in pause_text.iter_mut() {
+        (*visible).is_visible = true;
     }
 }
 
-fn menu_enter() {
-
+fn exit_pause(mut pause_text: Query<&mut Visible, With<PauseText>>) {
+    for mut visible in pause_text.iter_mut() {
+        (*visible).is_visible = false;
+    }
 }
 
+fn menu_enter() {}
+
 fn menu_update(mut state: ResMut<State<AppState>>, keyboard_input: Res<Input<KeyCode>>) {
-    if keyboard_input.just_pressed(KeyCode::Return) {
-        state.set_next(AppState::InGame).unwrap();
+    if keyboard_input.pressed(KeyCode::Space) {
+        println!("scheduled");
+        state.set_next(AppState::Game).unwrap();
     }
 }
 
 fn menu_exit() {
+    println!("exiting");
+}
 
+fn game_enter(mut state: ResMut<State<GameState>>) {
+    println!("entering");
+    state.set_next(GameState::Running).unwrap();
 }
