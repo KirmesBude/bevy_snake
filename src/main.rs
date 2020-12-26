@@ -496,16 +496,13 @@ fn menu_enter() {}
 
 fn menu_update(mut state: ResMut<State<AppState>>, keyboard_input: Res<Input<KeyCode>>) {
     if keyboard_input.pressed(KeyCode::Space) {
-        println!("scheduled");
         state.set_next(AppState::Game).unwrap();
     }
 }
 
 fn menu_exit() {
-    println!("exiting");
 }
 
 fn game_enter(mut state: ResMut<State<GameState>>) {
-    println!("entering");
     state.set_next(GameState::Running).unwrap();
 }
