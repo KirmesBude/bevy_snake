@@ -1,11 +1,11 @@
 use bevy::prelude::*;
 
-use crate::{components::PauseText, resources::Materials};
+use crate::resources::{Fonts, Materials};
 
 use super::game_state::GameState;
 
-pub const SNAKE_APP_STATE_STARTUP: &'static str = "snake_app_state_startup";
-pub const SNAKE_APP_STATE: &'static str = "snake_app_state";
+pub const SNAKE_APP_STATE_STARTUP: &str = "snake_app_state_startup";
+pub const SNAKE_APP_STATE: &str = "snake_app_state";
 #[derive(Clone, PartialEq, Eq)]
 pub enum AppState {
     Setup,
@@ -13,6 +13,7 @@ pub enum AppState {
     Game,
 }
 
+/* Setup */
 pub fn app_setup(
     commands: &mut Commands,
     mut materials: ResMut<Assets<ColorMaterial>>,
@@ -26,36 +27,14 @@ pub fn app_setup(
         food_material: materials.add(Color::rgb(1.0, 0.0, 1.0).into()),
         body_material: materials.add(Color::rgb(0.6, 0.6, 0.6).into()),
     });
-
-    commands
-        .spawn(TextBundle {
-            visible: Visible {
-                is_visible: false,
-                ..Default::default()
-            },
-            style: Style {
-                align_self: AlignSelf::Center, /* Center center ??? */
-                ..Default::default()
-            },
-            text: Text {
-                value: "Paused".to_string(),
-                font: asset_server.load("fonts/FiraSans-Bold.ttf"),
-                style: TextStyle {
-                    font_size: 200.0, /* TODO: does not give a shit about window scale */
-                    color: Color::WHITE,
-                    alignment: TextAlignment {
-                        vertical: VerticalAlign::Center,
-                        horizontal: HorizontalAlign::Center,
-                    },
-                },
-            },
-            ..Default::default()
-        })
-        .with(PauseText);
+    commands.insert_resource(Fonts {
+        pause_font: asset_server.load("fonts/FiraSans-Bold.ttf").into(),
+    });
 
     app_state.set_next(AppState::Menu).unwrap();
 }
 
+/* Menu */
 pub fn menu_enter() {}
 
 pub fn menu_update(mut state: ResMut<State<AppState>>, keyboard_input: Res<Input<KeyCode>>) {
@@ -66,6 +45,13 @@ pub fn menu_update(mut state: ResMut<State<AppState>>, keyboard_input: Res<Input
 
 pub fn menu_exit() {}
 
+/* Game */
 pub fn game_enter(mut state: ResMut<State<GameState>>) {
     state.set_next(GameState::Running).unwrap();
+}
+
+/* game_enter handled in game_state */
+
+pub fn game_exit(mut state: ResMut<State<GameState>>) {
+    state.set_next(GameState::None).unwrap();
 }

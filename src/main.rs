@@ -3,8 +3,8 @@ use bevy::{core::FixedTimestep, render::pass::ClearColor};
 use resources::{GameOverEvent, GrowthEvent};
 use states::{
     app_state::{
-        app_setup, game_enter, menu_enter, menu_exit, menu_update, AppState, SNAKE_APP_STATE,
-        SNAKE_APP_STATE_STARTUP,
+        app_setup, game_enter, game_exit, menu_enter, menu_exit, menu_update, AppState,
+        SNAKE_APP_STATE, SNAKE_APP_STATE_STARTUP,
     },
     game_state::{
         eat_food, enter_pause, exit_pause, game_over, position_translation, snake_direction,
@@ -54,7 +54,8 @@ fn main() {
                     SystemStage::serial()
                         .with_system(game_enter.system())
                         .with_system(spawn_snake.system()),
-                ),
+                )
+                .with_exit_stage(AppState::Game, SystemStage::single(game_exit.system())),
         )
         .add_stage_after(
             SNAKE_APP_STATE,

@@ -6,6 +6,10 @@ pub struct Materials {
     pub body_material: Handle<ColorMaterial>,
 }
 
+pub struct Fonts {
+    pub pause_font: Handle<Font>,
+}
+
 pub struct GrowthEvent {
     pub snake: Entity,
 }

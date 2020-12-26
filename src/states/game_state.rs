@@ -1,21 +1,24 @@
 use crate::{
     components::{Direction, Food, PauseText, Position, Size, Snake, SnakeHead, SnakeSegment},
-    resources::{GameOverEvent, GrowthEvent, Materials},
+    resources::{Fonts, GameOverEvent, GrowthEvent, Materials},
 };
 use bevy::{
     ecs::{Entity, Local, Query, ResMut, State, With},
     input::Input,
     math::Vec3,
     prelude::{
-        BuildChildren, Children, Commands, DespawnRecursiveExt, EventReader, Events,
-        GlobalTransform, KeyCode, Res, Sprite, SpriteBundle, Transform, Vec2, Visible,
+        BuildChildren, Children, Color, Commands, DespawnRecursiveExt, EventReader, Events,
+        GlobalTransform, HorizontalAlign, KeyCode, Res, Sprite, SpriteBundle, Text, TextBundle,
+        Transform, Vec2, VerticalAlign,
     },
+    text::{TextAlignment, TextStyle},
+    ui::{AlignSelf, Style},
     window::Windows,
 };
 
 use super::app_state::AppState;
 
-pub const SNAKE_GAME_STATE: &'static str = "snake_game_state";
+pub const SNAKE_GAME_STATE: &str = "snake_game_state";
 #[derive(Clone, PartialEq, Eq)]
 pub enum GameState {
     None,
@@ -23,6 +26,9 @@ pub enum GameState {
     Pausing,
 }
 
+/* None is not handled */
+
+/* Running */
 pub fn spawn_snake(commands: &mut Commands, materials: Res<Materials>) {
     let snake_head = commands
         .spawn(SpriteBundle {
@@ -279,6 +285,7 @@ pub fn game_over(
     }
 }
 
+/* Pause */
 pub fn toggle_pause(
     app_state: Res<State<AppState>>,
     mut game_state: ResMut<State<GameState>>,
@@ -293,14 +300,32 @@ pub fn toggle_pause(
     }
 }
 
-pub fn enter_pause(mut pause_text: Query<&mut Visible, With<PauseText>>) {
-    for mut visible in pause_text.iter_mut() {
-        (*visible).is_visible = true;
-    }
+pub fn enter_pause(commands: &mut Commands, fonts: Res<Fonts>) {
+    commands
+        .spawn(TextBundle {
+            style: Style {
+                align_self: AlignSelf::Center, /* Center center ??? */
+                ..Default::default()
+            },
+            text: Text {
+                value: "Paused".to_string(),
+                font: fonts.pause_font.clone(),
+                style: TextStyle {
+                    font_size: 200.0, /* TODO: does not give a shit about window scale */
+                    color: Color::WHITE,
+                    alignment: TextAlignment {
+                        vertical: VerticalAlign::Center,
+                        horizontal: HorizontalAlign::Center,
+                    },
+                },
+            },
+            ..Default::default()
+        })
+        .with(PauseText);
 }
 
-pub fn exit_pause(mut pause_text: Query<&mut Visible, With<PauseText>>) {
-    for mut visible in pause_text.iter_mut() {
-        (*visible).is_visible = false;
+pub fn exit_pause(commands: &mut Commands, pause_texts: Query<Entity, With<PauseText>>) {
+    for entity in pause_texts.iter() {
+        commands.despawn(entity);
     }
 }
