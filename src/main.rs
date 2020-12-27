@@ -1,19 +1,20 @@
 use bevy::prelude::*;
 use bevy::{core::FixedTimestep, render::pass::ClearColor};
-use resources::{GameOverEvent, GrowthEvent};
+use events::{GameOverEvent, GrowthEvent};
 use states::{
     app_state::{
-        app_setup, game_enter, game_exit, menu_enter, menu_exit, menu_update, AppState,
-        SNAKE_APP_STATE, SNAKE_APP_STATE_STARTUP,
+        app_setup, game_enter, game_exit, menu_enter, menu_exit, menu_update, position_translation,
+        sprite_scaling, AppState, SNAKE_APP_STATE, SNAKE_APP_STATE_STARTUP,
     },
     game_state::{
-        eat_food, enter_pause, exit_pause, game_over, position_translation, snake_direction,
-        snake_eat_snake, snake_growth, snake_movement, spawn_food, spawn_snake, sprite_scaling,
-        toggle_pause, wrapping_edges, GameState, SNAKE_GAME_STATE,
+        eat_food, enter_pause, exit_pause, game_over, snake_direction, snake_eat_snake,
+        snake_growth, snake_movement, spawn_food, spawn_snake, toggle_pause, wrapping_edges,
+        GameState, SNAKE_GAME_STATE,
     },
 };
 
 mod components;
+mod events;
 mod resources;
 mod states;
 
@@ -23,8 +24,8 @@ fn main() {
         /* Window initialization */
         .add_resource(WindowDescriptor {
             title: "Snake!".to_string(),
-            width: 1200.0,
-            height: 1200.0,
+            width: 600.0,
+            height: 600.0,
             ..Default::default()
         })
         /* Resources */
@@ -55,6 +56,12 @@ fn main() {
                         .with_system(game_enter.system())
                         .with_system(spawn_snake.system()),
                 )
+                .with_update_stage(
+                    AppState::Game,
+                    SystemStage::parallel()
+                        .with_system(position_translation.system())
+                        .with_system(sprite_scaling.system()),
+                )
                 .with_exit_stage(AppState::Game, SystemStage::single(game_exit.system())),
         )
         .add_stage_after(
@@ -76,8 +83,6 @@ fn main() {
                         .with_stage(
                             "game_loop",
                             SystemStage::parallel()
-                                .with_system(position_translation.system())
-                                .with_system(sprite_scaling.system())
                                 .with_system(snake_direction.system())
                                 .with_system(eat_food.system())
                                 .with_system(snake_growth.system())

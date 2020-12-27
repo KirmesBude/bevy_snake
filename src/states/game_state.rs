@@ -1,22 +1,21 @@
 use crate::{
     components::{Direction, Food, PauseText, Position, Size, Snake, SnakeHead, SnakeSegment},
-    resources::{Fonts, GameOverEvent, GrowthEvent, Materials},
+    events::{GameOverEvent, GrowthEvent},
+    resources::{Fonts, Materials},
 };
 use bevy::{
     ecs::{Entity, Local, Query, ResMut, State, With},
     input::Input,
-    math::Vec3,
     prelude::{
         BuildChildren, Children, Color, Commands, DespawnRecursiveExt, EventReader, Events,
-        GlobalTransform, HorizontalAlign, KeyCode, Res, Sprite, SpriteBundle, Text, TextBundle,
-        Transform, Vec2, VerticalAlign,
+        GlobalTransform, HorizontalAlign, KeyCode, Res, SpriteBundle, Text, TextBundle, Transform,
+        VerticalAlign,
     },
     text::{TextAlignment, TextStyle},
     ui::{AlignSelf, Style},
-    window::Windows,
 };
 
-use super::app_state::AppState;
+use super::app_state::{AppState, ARENA_HEIGHT, ARENA_WIDTH};
 
 pub const SNAKE_GAME_STATE: &str = "snake_game_state";
 #[derive(Clone, PartialEq, Eq)]
@@ -33,7 +32,7 @@ pub fn spawn_snake(commands: &mut Commands, materials: Res<Materials>) {
     let snake_head = commands
         .spawn(SpriteBundle {
             material: materials.head_material.clone(),
-            sprite: Sprite::new(Vec2::new(10.0, 10.0)),
+            //sprite: Sprite::new(Vec2::new(10.0, 10.0)),
             ..Default::default()
         })
         .with(SnakeHead)
@@ -46,7 +45,7 @@ pub fn spawn_snake(commands: &mut Commands, materials: Res<Materials>) {
     let snake_body = commands
         .spawn(SpriteBundle {
             material: materials.body_material.clone(),
-            sprite: Sprite::new(Vec2::new(10.0, 10.0)),
+            //sprite: Sprite::new(Vec2::new(10.0, 10.0)),
             ..Default::default()
         })
         .with(SnakeSegment)
@@ -58,7 +57,7 @@ pub fn spawn_snake(commands: &mut Commands, materials: Res<Materials>) {
     let snake_tail = commands
         .spawn(SpriteBundle {
             material: materials.body_material.clone(),
-            sprite: Sprite::new(Vec2::new(10.0, 10.0)),
+            //sprite: Sprite::new(Vec2::new(10.0, 10.0)),
             ..Default::default()
         })
         .with(SnakeSegment)
@@ -80,34 +79,6 @@ pub fn spawn_snake(commands: &mut Commands, materials: Res<Materials>) {
         .unwrap();
 
     commands.push_children(snake, &[snake_head, snake_body, snake_tail]);
-}
-
-const ARENA_WIDTH: u32 = 10;
-const ARENA_HEIGHT: u32 = 10;
-
-pub fn position_translation(windows: Res<Windows>, mut query: Query<(&Position, &mut Transform)>) {
-    fn convert(pos: f32, bound_window: f32, bound_game: f32) -> f32 {
-        let tile_size = bound_window / bound_game;
-        pos / bound_game * bound_window - (bound_window / 2.) + (tile_size / 2.)
-    }
-    let window = windows.get_primary().unwrap();
-    for (pos, mut transform) in query.iter_mut() {
-        transform.translation = Vec3::new(
-            convert(pos.x as f32, window.width() as f32, ARENA_WIDTH as f32),
-            convert(pos.y as f32, window.height() as f32, ARENA_HEIGHT as f32),
-            0.0,
-        );
-    }
-}
-
-pub fn sprite_scaling(windows: Res<Windows>, mut query: Query<(&Size, &mut Sprite)>) {
-    let window = windows.get_primary().unwrap();
-    for (size, mut sprite) in query.iter_mut() {
-        sprite.size = Vec2::new(
-            size.width * (window.width() as f32 / ARENA_WIDTH as f32),
-            size.height * (window.height() as f32 / ARENA_HEIGHT as f32),
-        );
-    }
 }
 
 pub fn snake_direction(keyboard_input: Res<Input<KeyCode>>, mut snakes: Query<&mut Snake>) {
@@ -142,7 +113,7 @@ pub fn snake_movement(
             let prev = two_segements[1];
             let next = two_segements[0];
 
-            let next_position = positions.get_mut(next).unwrap().clone();
+            let next_position = *positions.get_mut(next).unwrap();
             let mut prev_position = positions.get_mut(prev).unwrap();
             prev_position.x = next_position.x;
             prev_position.y = next_position.y;
@@ -217,11 +188,11 @@ pub fn snake_growth(
         let snake_tail = commands
             .spawn(SpriteBundle {
                 material: materials.body_material.clone(),
-                sprite: Sprite::new(Vec2::new(10.0, 10.0)),
+                //sprite: Sprite::new(Vec2::new(10.0, 10.0)),
                 ..Default::default()
             })
             .with(SnakeSegment)
-            .with(last_segment_position.clone())
+            .with(*last_segment_position)
             .with(Size::square(0.7))
             .current_entity()
             .unwrap();
@@ -273,7 +244,7 @@ pub fn game_over(
     mut game_over_reader: Local<EventReader<GameOverEvent>>,
     foods: Query<Entity, With<Food>>,
 ) {
-    for game_over_event in game_over_reader.iter(&game_over_events) {
+    if let Some(game_over_event) = game_over_reader.iter(&game_over_events).next() {
         commands.despawn_recursive(game_over_event.snake);
 
         for food in foods.iter() {
@@ -281,7 +252,6 @@ pub fn game_over(
         }
 
         spawn_snake(commands, materials);
-        return;
     }
 }
 

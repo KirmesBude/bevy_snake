@@ -9,11 +9,3 @@ pub struct Materials {
 pub struct Fonts {
     pub pause_font: Handle<Font>,
 }
-
-pub struct GrowthEvent {
-    pub snake: Entity,
-}
-
-pub struct GameOverEvent {
-    pub snake: Entity,
-}
