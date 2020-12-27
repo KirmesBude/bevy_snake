@@ -9,3 +9,9 @@ pub struct Materials {
 pub struct Fonts {
     pub pause_font: Handle<Font>,
 }
+
+pub struct ButtonMaterials {
+    pub normal: Handle<ColorMaterial>,
+    pub hovered: Handle<ColorMaterial>,
+    pub pressed: Handle<ColorMaterial>,
+}

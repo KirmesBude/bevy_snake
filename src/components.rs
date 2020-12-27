@@ -48,3 +48,5 @@ impl Size {
 pub struct Food;
 
 pub struct PauseText;
+
+pub struct MenuButton;
