@@ -1,19 +1,11 @@
 use crate::{
-    components::{Direction, Food, PauseText, Position, Size, Snake, SnakeHead, SnakeSegment},
+    components::{
+        BlockDirection, BlockPosition, BlockSize, Food, PauseText, Snake, SnakeHead, SnakeSegment,
+    },
     events::{GameOverEvent, GrowthEvent},
     resources::{Fonts, Materials},
 };
-use bevy::{
-    ecs::{Entity, Local, Query, ResMut, State, With},
-    input::Input,
-    prelude::{
-        BuildChildren, Children, Color, Commands, DespawnRecursiveExt, EventReader, Events,
-        GlobalTransform, HorizontalAlign, KeyCode, Res, SpriteBundle, Text, TextBundle, Transform,
-        VerticalAlign,
-    },
-    text::{TextAlignment, TextStyle},
-    ui::{AlignSelf, Style},
-};
+use bevy::prelude::*;
 
 use super::app_state::{AppState, ARENA_HEIGHT, ARENA_WIDTH};
 
@@ -37,8 +29,8 @@ pub fn spawn_snake(commands: &mut Commands, materials: Res<Materials>) {
         })
         .with(SnakeHead)
         .with(SnakeSegment)
-        .with(Position { x: 3, y: 3 })
-        .with(Size::square(0.8))
+        .with(BlockPosition { x: 3, y: 3 })
+        .with(BlockSize::square(0.8))
         .current_entity()
         .unwrap();
 
@@ -49,8 +41,8 @@ pub fn spawn_snake(commands: &mut Commands, materials: Res<Materials>) {
             ..Default::default()
         })
         .with(SnakeSegment)
-        .with(Position { x: 2, y: 3 })
-        .with(Size::square(0.7))
+        .with(BlockPosition { x: 2, y: 3 })
+        .with(BlockSize::square(0.7))
         .current_entity()
         .unwrap();
 
@@ -61,16 +53,16 @@ pub fn spawn_snake(commands: &mut Commands, materials: Res<Materials>) {
             ..Default::default()
         })
         .with(SnakeSegment)
-        .with(Position { x: 1, y: 3 })
-        .with(Size::square(0.7))
+        .with(BlockPosition { x: 1, y: 3 })
+        .with(BlockSize::square(0.7))
         .current_entity()
         .unwrap();
 
     let snake = commands
         .spawn((
             Snake {
-                direction: Direction::Right,
-                last_direction: Direction::Right,
+                direction: BlockDirection::Right,
+                last_direction: BlockDirection::Right,
             },
             Transform::default(),
             GlobalTransform::default(),
@@ -85,13 +77,13 @@ pub fn snake_direction(keyboard_input: Res<Input<KeyCode>>, mut snakes: Query<&m
     for mut snake in snakes.iter_mut() {
         let direction = {
             if keyboard_input.pressed(KeyCode::Left) {
-                Direction::Left
+                BlockDirection::Left
             } else if keyboard_input.pressed(KeyCode::Right) {
-                Direction::Right
+                BlockDirection::Right
             } else if keyboard_input.pressed(KeyCode::Up) {
-                Direction::Up
+                BlockDirection::Up
             } else if keyboard_input.pressed(KeyCode::Down) {
-                Direction::Down
+                BlockDirection::Down
             } else {
                 snake.direction
             }
@@ -105,7 +97,7 @@ pub fn snake_direction(keyboard_input: Res<Input<KeyCode>>, mut snakes: Query<&m
 
 pub fn snake_movement(
     mut snakes: Query<(&mut Snake, &Children)>,
-    mut positions: Query<&mut Position>,
+    mut positions: Query<&mut BlockPosition>,
 ) {
     for (mut snake, segments) in snakes.iter_mut() {
         /* Actual Movement */
@@ -121,18 +113,18 @@ pub fn snake_movement(
 
         let mut head_position = positions.get_mut(segments[0]).unwrap();
         match snake.direction {
-            Direction::Left => head_position.x -= 1,
-            Direction::Right => head_position.x += 1,
-            Direction::Up => head_position.y += 1,
-            Direction::Down => head_position.y -= 1,
+            BlockDirection::Left => head_position.x -= 1,
+            BlockDirection::Right => head_position.x += 1,
+            BlockDirection::Up => head_position.y += 1,
+            BlockDirection::Down => head_position.y -= 1,
         }
 
         snake.last_direction = snake.direction;
     }
 }
 
-pub fn spawn_food(commands: &mut Commands, materials: Res<Materials>, q: Query<&Position>) {
-    let position = Position {
+pub fn spawn_food(commands: &mut Commands, materials: Res<Materials>, q: Query<&BlockPosition>) {
+    let position = BlockPosition {
         x: (rand::random::<f32>() * ARENA_WIDTH as f32) as i32,
         y: (rand::random::<f32>() * ARENA_HEIGHT as f32) as i32,
     };
@@ -149,15 +141,15 @@ pub fn spawn_food(commands: &mut Commands, materials: Res<Materials>, q: Query<&
         })
         .with(Food)
         .with(position)
-        .with(Size::square(0.8));
+        .with(BlockSize::square(0.8));
 }
 
 pub fn eat_food(
     commands: &mut Commands,
     mut growth_events: ResMut<Events<GrowthEvent>>,
     snakes: Query<(Entity, &Children), With<Snake>>,
-    positions: Query<&Position>,
-    food_positions: Query<(Entity, &Position), With<Food>>,
+    positions: Query<&BlockPosition>,
+    food_positions: Query<(Entity, &BlockPosition), With<Food>>,
 ) {
     for (entity, segments) in snakes.iter() {
         let head = segments[0];
@@ -176,7 +168,7 @@ pub fn snake_growth(
     materials: Res<Materials>,
     growth_events: Res<Events<GrowthEvent>>,
     mut growth_reader: Local<EventReader<GrowthEvent>>,
-    positions: Query<&Position>,
+    positions: Query<&BlockPosition>,
     segments: Query<&Children>,
 ) {
     for growth_event in growth_reader.iter(&growth_events) {
@@ -193,7 +185,7 @@ pub fn snake_growth(
             })
             .with(SnakeSegment)
             .with(*last_segment_position)
-            .with(Size::square(0.7))
+            .with(BlockSize::square(0.7))
             .current_entity()
             .unwrap();
 
@@ -201,7 +193,7 @@ pub fn snake_growth(
     }
 }
 
-pub fn wrapping_edges(mut positions: Query<&mut Position>) {
+pub fn wrapping_edges(mut positions: Query<&mut BlockPosition>) {
     for mut position in positions.iter_mut() {
         if position.x < 0 {
             position.x = (ARENA_WIDTH - 1) as i32;
@@ -220,9 +212,9 @@ pub fn wrapping_edges(mut positions: Query<&mut Position>) {
 
 pub fn snake_eat_snake(
     mut game_over_event: ResMut<Events<GameOverEvent>>,
-    positions: Query<&Position>,
+    positions: Query<&BlockPosition>,
     snakes: Query<(Entity, &Children), With<Snake>>,
-    head_positions: Query<&Position, With<SnakeHead>>,
+    head_positions: Query<&BlockPosition, With<SnakeHead>>,
 ) {
     for (entity, segments) in snakes.iter() {
         for head_position in head_positions.iter() {

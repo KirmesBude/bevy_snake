@@ -1,12 +1,12 @@
 #[derive(Debug, PartialEq, Copy, Clone)]
-pub enum Direction {
+pub enum BlockDirection {
     Left,
     Right,
     Up,
     Down,
 }
 
-impl Direction {
+impl BlockDirection {
     pub fn opposite(&self) -> Self {
         match self {
             Self::Left => Self::Right,
@@ -17,8 +17,8 @@ impl Direction {
     }
 }
 pub struct Snake {
-    pub direction: Direction,
-    pub last_direction: Direction,
+    pub direction: BlockDirection,
+    pub last_direction: BlockDirection,
 }
 
 pub struct SnakeHead;
@@ -26,17 +26,17 @@ pub struct SnakeHead;
 pub struct SnakeSegment;
 
 #[derive(Debug, Eq, PartialEq, Copy, Clone)]
-pub struct Position {
+pub struct BlockPosition {
     pub x: i32,
     pub y: i32,
 }
 
-pub struct Size {
+pub struct BlockSize {
     pub width: f32,
     pub height: f32,
 }
 
-impl Size {
+impl BlockSize {
     pub fn square(x: f32) -> Self {
         Self {
             width: x,

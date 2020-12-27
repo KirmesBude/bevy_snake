@@ -1,19 +1,7 @@
-use bevy::{
-    ecs::{Commands, Entity, Query, Res, ResMut, State, With},
-    input::Input,
-    math::{Rect, Vec2, Vec3},
-    prelude::{
-        AssetServer, Assets, BuildChildren, ButtonBundle, Camera2dBundle, CameraUiBundle, Color,
-        DespawnRecursiveExt, KeyCode, Text, TextBundle, Transform,
-    },
-    sprite::{ColorMaterial, Sprite},
-    text::TextStyle,
-    ui::{AlignItems, JustifyContent, Style, Val},
-    window::Windows,
-};
+use bevy::prelude::*;
 
 use crate::{
-    components::{MenuButton, Position, Size},
+    components::{BlockPosition, BlockSize, MenuButton},
     resources::{ButtonMaterials, Fonts, Materials},
 };
 
@@ -63,7 +51,7 @@ pub fn menu_enter(
     commands
         .spawn(ButtonBundle {
             style: Style {
-                size: bevy::math::Size::new(Val::Px(150.0), Val::Px(65.0)),
+                size: Size::new(Val::Px(150.0), Val::Px(65.0)),
                 // center button
                 margin: Rect::all(Val::Auto),
                 // horizontally center child text
@@ -112,7 +100,10 @@ pub fn game_enter(mut state: ResMut<State<GameState>>) {
 pub const ARENA_WIDTH: u32 = 30;
 pub const ARENA_HEIGHT: u32 = 30;
 
-pub fn position_translation(windows: Res<Windows>, mut query: Query<(&Position, &mut Transform)>) {
+pub fn position_translation(
+    windows: Res<Windows>,
+    mut query: Query<(&BlockPosition, &mut Transform)>,
+) {
     fn convert(pos: f32, bound_window: f32, bound_game: f32) -> f32 {
         let tile_size = bound_window / bound_game;
         pos / bound_game * bound_window - (bound_window / 2.) + (tile_size / 2.)
@@ -127,7 +118,7 @@ pub fn position_translation(windows: Res<Windows>, mut query: Query<(&Position, 
     }
 }
 
-pub fn sprite_scaling(windows: Res<Windows>, mut query: Query<(&Size, &mut Sprite)>) {
+pub fn sprite_scaling(windows: Res<Windows>, mut query: Query<(&BlockSize, &mut Sprite)>) {
     let window = windows.get_primary().unwrap();
     for (size, mut sprite) in query.iter_mut() {
         sprite.size = Vec2::new(
